@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>ZBounce — tunnel pong</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#05060d;
+    --cyan:#21e6ff;
+    --magenta:#ff2e88;
+    --violet:#8b5cff;
+    --ink:#cdd6ff;
+    --panel:rgba(10,14,28,.72);
+    --line:rgba(122,160,255,.22);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--void);color:var(--ink);
+    font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+
+  /* cinematic vignette over the canvas */
+  #vignette{position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:radial-gradient(120% 120% at 50% 50%, transparent 52%, rgba(0,0,0,.55) 100%)}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;z-index:10;pointer-events:none}
+  .scoreboard{position:absolute;top:22px;left:0;right:0;display:flex;
+    justify-content:center;gap:34px;align-items:flex-start}
+  .score{text-align:center;min-width:96px}
+  .score .label{font-family:"Space Grotesk";font-size:12px;letter-spacing:.28em;
+    text-transform:uppercase;opacity:.7}
+  .score .num{font-family:"Space Mono";font-weight:700;font-size:58px;line-height:.9;
+    margin-top:4px;text-shadow:0 0 18px currentColor}
+  .score.you{color:var(--cyan)}
+  .score.cpu{color:var(--magenta)}
+  .target{align-self:center;text-align:center;color:var(--ink);opacity:.65}
+  .target .v{font-family:"Space Mono";font-size:13px;letter-spacing:.14em}
+  .target .k{font-size:10px;letter-spacing:.24em;text-transform:uppercase;opacity:.6}
+
+  #gearBtn{position:absolute;top:20px;right:20px;width:42px;height:42px;border-radius:12px;
+    pointer-events:auto;cursor:pointer;background:var(--panel);border:1px solid var(--line);
+    color:var(--ink);display:grid;place-items:center;backdrop-filter:blur(8px);transition:.18s}
+  #gearBtn:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 18px rgba(33,230,255,.25)}
+  #gearBtn svg{width:20px;height:20px}
+
+  .hint{position:absolute;bottom:18px;left:0;right:0;text-align:center;
+    font-family:"Space Mono";font-size:12px;letter-spacing:.1em;opacity:.5}
+
+  /* ---------- overlays (start / pause / over / settings) ---------- */
+  .overlay{position:fixed;inset:0;z-index:20;display:none;place-items:center;
+    pointer-events:auto;background:radial-gradient(80% 80% at 50% 45%, rgba(8,10,22,.62), rgba(4,5,12,.92))}
+  .overlay.show{display:grid}
+  .card{width:min(440px,90vw);background:var(--panel);border:1px solid var(--line);
+    border-radius:20px;padding:34px 32px;backdrop-filter:blur(14px);
+    box-shadow:0 30px 80px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.02)}
+  .eyebrow{font-family:"Space Mono";font-size:11px;letter-spacing:.4em;text-transform:uppercase;
+    color:var(--cyan);opacity:.85}
+  .title{font-family:"Space Grotesk";font-weight:700;font-size:46px;line-height:1;margin:10px 0 4px;
+    letter-spacing:-.01em;background:linear-gradient(92deg,var(--cyan),var(--violet) 55%,var(--magenta));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .tagline{font-size:14px;opacity:.7;margin-bottom:22px}
+  .controls-list{display:grid;gap:9px;margin:0 0 24px;font-size:13.5px}
+  .controls-list .row{display:flex;gap:12px;align-items:center;opacity:.85}
+  .key{font-family:"Space Mono";font-size:11px;padding:3px 8px;border-radius:6px;
+    border:1px solid var(--line);background:rgba(255,255,255,.03);min-width:54px;text-align:center}
+
+  .btn{pointer-events:auto;cursor:pointer;font-family:"Space Grotesk";font-weight:600;
+    font-size:15px;letter-spacing:.02em;padding:13px 18px;border-radius:12px;width:100%;
+    color:var(--void);background:linear-gradient(92deg,var(--cyan),var(--violet));border:none;
+    box-shadow:0 0 24px rgba(33,230,255,.3);transition:.18s}
+  .btn:hover{filter:brightness(1.08);box-shadow:0 0 30px rgba(139,92,255,.45)}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none}
+  .btn.ghost:hover{border-color:var(--cyan);color:var(--cyan)}
+  .btn + .btn{margin-top:10px}
+
+  .winner{font-family:"Space Grotesk";font-weight:700;font-size:34px;margin:6px 0 2px}
+  .winner.you{color:var(--cyan)} .winner.cpu{color:var(--magenta)}
+
+  .code-box{font-family:"Space Mono";font-weight:700;font-size:46px;letter-spacing:.22em;
+    color:var(--cyan);margin:6px 0 2px;text-shadow:0 0 22px rgba(33,230,255,.45);
+    padding-left:.22em /* optical balance for letter-spacing */}
+  .code-input{width:100%;font-family:"Space Mono";font-weight:700;font-size:30px;text-align:center;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);background:rgba(255,255,255,.03);
+    border:1px solid var(--line);border-radius:12px;padding:14px 10px;margin-top:6px;outline:none}
+  .code-input:focus{border-color:var(--cyan);box-shadow:0 0 18px rgba(33,230,255,.2)}
+  .err{color:var(--magenta)}
+
+  /* settings panel rows */
+  .set-row{margin:16px 0}
+  .set-row .cap{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:13px;margin-bottom:7px}
+  .set-row .cap b{font-weight:500}
+  .set-row .cap .val{font-family:"Space Mono";font-size:12px;color:var(--cyan)}
+  input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:4px;
+    background:linear-gradient(90deg,var(--cyan),var(--violet));outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;
+    border-radius:50%;background:#fff;cursor:pointer;box-shadow:0 0 10px rgba(33,230,255,.7)}
+  input[type=range]::-moz-range-thumb{width:17px;height:17px;border:none;border-radius:50%;
+    background:#fff;cursor:pointer;box-shadow:0 0 10px rgba(33,230,255,.7)}
+  .seg{display:flex;gap:6px}
+  .seg button{flex:1;font-family:"Space Mono";font-size:12px;padding:8px 4px;border-radius:9px;
+    cursor:pointer;background:rgba(255,255,255,.03);border:1px solid var(--line);color:var(--ink);transition:.15s}
+  .seg button.on{border-color:var(--cyan);color:var(--cyan);background:rgba(33,230,255,.08);
+    box-shadow:inset 0 0 14px rgba(33,230,255,.12)}
+  .set-foot{display:flex;gap:10px;margin-top:24px}
+  .set-foot .btn{margin:0}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="vignette"></div>
+
+<div id="hud">
+  <div class="scoreboard">
+    <div class="score you"><div class="label">You</div><div class="num" id="scoreYou">0</div></div>
+    <div class="target"><div class="v" id="targetVal">5</div><div class="k">to win</div></div>
+    <div class="score cpu"><div class="label">CPU</div><div class="num" id="scoreCpu">0</div></div>
+  </div>
+  <button id="gearBtn" title="Settings (P)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+    </svg>
+  </button>
+  <div class="hint" id="hint">move mouse to steer · P to pause</div>
+</div>
+
+<!-- Start -->
+<div class="overlay show" id="startScreen">
+  <div class="card">
+    <div class="eyebrow">tunnel pong</div>
+    <div class="title">ZBounce</div>
+    <div class="tagline">Pong down the barrel of a tunnel — steer in any direction. Play the CPU, or invite a friend with a code for a head-to-head down the same tunnel.</div>
+    <div class="controls-list">
+      <div class="row"><span class="key">Mouse</span> steer the paddle anywhere in the tunnel</div>
+      <div class="row"><span class="key">WASD ↑↓←→</span> keyboard steering</div>
+      <div class="row"><span class="key">P / Esc</span> pause &amp; open settings (single player)</div>
+    </div>
+    <button class="btn" id="startBtn">Single player</button>
+    <button class="btn ghost" id="mpBtn">Play a friend</button>
+    <button class="btn ghost" id="startSettingsBtn">Settings</button>
+  </div>
+</div>
+
+<!-- Multiplayer menu -->
+<div class="overlay" id="mpScreen">
+  <div class="card">
+    <div class="eyebrow">2 players</div>
+    <div class="title" style="font-size:34px">Play a friend</div>
+    <div class="tagline">One of you hosts and shares the code; the other joins with it. You connect directly, peer-to-peer.</div>
+    <button class="btn" id="hostBtn">Host a game</button>
+    <button class="btn ghost" id="joinShowBtn">Join with a code</button>
+    <button class="btn ghost" id="mpBackBtn">Back</button>
+  </div>
+</div>
+
+<!-- Host waiting -->
+<div class="overlay" id="hostScreen">
+  <div class="card" style="text-align:center">
+    <div class="eyebrow">your invite code</div>
+    <div class="code-box" id="hostCode">––––––</div>
+    <div class="tagline" id="hostStatus" style="margin-top:8px">Share this code. Waiting for your opponent to join…</div>
+    <button class="btn ghost" id="hostCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- Join with code -->
+<div class="overlay" id="joinScreen">
+  <div class="card">
+    <div class="eyebrow">enter code</div>
+    <div class="title" style="font-size:34px">Join a game</div>
+    <input id="joinInput" class="code-input" maxlength="6" placeholder="ABC123" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <div class="tagline err" id="joinError" style="min-height:18px;margin:6px 0 14px"></div>
+    <button class="btn" id="joinGoBtn">Connect</button>
+    <button class="btn ghost" id="joinBackBtn">Back</button>
+  </div>
+</div>
+
+<!-- Net info / error / disconnect -->
+<div class="overlay" id="netInfoScreen">
+  <div class="card" style="text-align:center">
+    <div class="eyebrow" id="netInfoEyebrow">connection</div>
+    <div class="title" id="netInfoTitle" style="font-size:32px">…</div>
+    <div class="tagline" id="netInfoMsg" style="margin-top:6px"></div>
+    <button class="btn" id="netInfoBtn">Back to menu</button>
+  </div>
+</div>
+
+<!-- Pause / Settings -->
+<div class="overlay" id="settingsScreen">
+  <div class="card">
+    <div class="eyebrow">paused</div>
+    <div class="title" style="font-size:34px">Settings</div>
+    <div class="tagline" style="margin-bottom:14px">Tune the run. Changes apply instantly.</div>
+
+    <div class="set-row">
+      <div class="cap"><b>Ball speed</b><span class="val" id="speedVal">Normal</span></div>
+      <input type="range" id="speed" min="14" max="40" step="1" value="22">
+    </div>
+    <div class="set-row">
+      <div class="cap"><b>Paddle size</b><span class="val" id="paddleVal">Medium</span></div>
+      <input type="range" id="paddle" min="1.7" max="4" step="0.1" value="2.6">
+    </div>
+    <div class="set-row">
+      <div class="cap"><b>CPU difficulty</b><span class="val" id="diffVal">Medium</span></div>
+      <div class="seg" id="diffSeg">
+        <button data-v="easy">Easy</button>
+        <button data-v="medium" class="on">Medium</button>
+        <button data-v="hard">Hard</button>
+        <button data-v="insane">Insane</button>
+      </div>
+    </div>
+    <div class="set-row">
+      <div class="cap"><b>Points to win</b><span class="val" id="winVal">5</span></div>
+      <div class="seg" id="winSeg">
+        <button data-v="3">3</button>
+        <button data-v="5" class="on">5</button>
+        <button data-v="7">7</button>
+        <button data-v="11">11</button>
+      </div>
+    </div>
+    <div class="set-row">
+      <div class="cap"><b>Steering</b><span class="val" id="ctrlVal">Mouse</span></div>
+      <div class="seg" id="ctrlSeg">
+        <button data-v="mouse" class="on">Mouse</button>
+        <button data-v="keys">Keyboard</button>
+      </div>
+    </div>
+    <div class="set-row">
+      <div class="cap"><b>Tunnel shape</b><span class="val" id="shapeVal">Square</span></div>
+      <div class="seg" id="shapeSeg">
+        <button data-v="square" class="on">Square</button>
+        <button data-v="round">Round</button>
+      </div>
+    </div>
+    <div class="set-row">
+      <div class="cap"><b>Appearance</b><span class="val" id="appearVal">Futuristic</span></div>
+      <div class="seg" id="appearSeg">
+        <button data-v="futuristic" class="on">Futuristic</button>
+        <button data-v="realistic">Realistic</button>
+      </div>
+    </div>
+    <div class="set-row">
+      <div class="cap"><b>Ball trail</b><span class="val" id="trailVal">On</span></div>
+      <div class="seg" id="trailSeg">
+        <button data-v="on" class="on">On</button>
+        <button data-v="off">Off</button>
+      </div>
+    </div>
+
+    <div class="set-foot">
+      <button class="btn ghost" id="restartBtn">Restart match</button>
+      <button class="btn" id="resumeBtn">Resume</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game over -->
+<div class="overlay" id="overScreen">
+  <div class="card" style="text-align:center">
+    <div class="eyebrow">match over</div>
+    <div class="winner you" id="winnerText">You win</div>
+    <div class="tagline" id="finalScore" style="margin-top:6px">5 — 2</div>
+    <button class="btn" id="playAgainBtn">Play again</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ================= CONFIG / STATE ================= */
+const TUNNEL_R = 6;           // inner radius of round tunnel
+const SQUARE_H = 4.6;         // half-extent (x & y) of square tunnel — sized to stay on-screen
+const BALL_R   = 0.34;
+const PLAYER_Z = 12;          // near paddle (player)
+const AI_Z     = -12;         // far paddle (cpu)
+const MISS_Z   = 3;           // distance past a paddle that counts as a goal
+const CAM_Z    = 19;
+
+const DIFF = {
+  easy:   { track:0.045, jitter:1.4, lead:0.55 },
+  medium: { track:0.085, jitter:0.8, lead:0.78 },
+  hard:   { track:0.13,  jitter:0.4, lead:0.92 },
+  insane: { track:0.2,   jitter:0.1, lead:1.0  }
+};
+
+const cfg = {
+  speed: 22,
+  paddle: 2.6,
+  diff: 'medium',
+  win: 5,
+  control: 'mouse',
+  trail: true,
+  shape: 'square',     // 'square' (4-wall corridor) | 'round' (cylindrical)
+  appearance: 'futuristic'  // 'futuristic' (neon) | 'realistic' (brick / subway)
+};
+
+const game = {
+  running:false, paused:false, over:false,
+  mode:'solo',           // 'solo' | 'host' | 'guest'
+  scoreYou:0, scoreCpu:0,
+  serveTimer:0
+};
+
+/* ---- WebRTC multiplayer ---- */
+const SIGNAL_URL = 'signal.php';   // PHP signaling endpoint (same folder)
+const RTC_CONFIG = { iceServers: [
+  { urls:'stun:stun.l.google.com:19302' },
+  { urls:'stun:stun1.l.google.com:19302' }
+] };
+const net = {
+  pc:null, ch:null, role:null, code:null,
+  since:0, poll:null, connected:false,
+  remoteSet:false, pendingIce:[], lastSend:0,
+  ball:{ have:false, x:0,y:0,z:0, vx:0,vy:0,vz:0 }
+};
+
+/* ================= THREE SETUP ================= */
+const app = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x05060d, 26, 72);
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(0, 0, CAM_Z);
+camera.lookAt(0, 0, -1);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x05060d, 1);
+app.appendChild(renderer.domElement);
+
+/* --- lights: low ambient + two end rim lights + the moving ball light --- */
+const amb = new THREE.AmbientLight(0x2a3360, 0.6); scene.add(amb);
+const rimCyan = new THREE.PointLight(0x21e6ff, 0.8, 60); rimCyan.position.set(0,0,PLAYER_Z+4); scene.add(rimCyan);
+const rimMag  = new THREE.PointLight(0xff2e88, 0.7, 60); rimMag.position.set(0,0,AI_Z-4); scene.add(rimMag);
+
+/* ================= TUNNEL ================= */
+const RING_BACK = -46, RING_FRONT = 17, RING_SPAN = RING_FRONT - RING_BACK;
+const SQ_L = 64, SQ_CZ = -16;                 // square tunnel length & center z
+const SQ_FRONT = SQ_CZ + SQ_L/2, SQ_REAR = SQ_CZ - SQ_L/2;
+
+// round-tunnel grid texture (longitudinal + ring lines), scrolled for motion
+function makeTunnelTexture(){
+  const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+  const x = c.getContext('2d');
+  x.fillStyle = '#070912'; x.fillRect(0,0,512,512);
+  for(let i=0;i<=16;i++){
+    const px = i/16*512;
+    const g = x.createLinearGradient(px,0,px,512);
+    g.addColorStop(0,'rgba(33,230,255,0.0)');
+    g.addColorStop(.5,'rgba(33,230,255,0.55)');
+    g.addColorStop(1,'rgba(139,92,255,0.0)');
+    x.strokeStyle = g; x.lineWidth = i%4===0?2.2:1; x.beginPath();
+    x.moveTo(px,0); x.lineTo(px,512); x.stroke();
+  }
+  for(let j=0;j<=8;j++){
+    const py = j/8*512;
+    x.strokeStyle = j%2===0 ? 'rgba(139,92,255,0.5)' : 'rgba(33,230,255,0.28)';
+    x.lineWidth = j%2===0?2:1; x.beginPath(); x.moveTo(0,py); x.lineTo(512,py); x.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 6);
+  return t;
+}
+// square-wall grid: one glowing line on two edges of the tile -> tiles into a full grid
+function makeGridTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.clearRect(0,0,256,256);
+  x.shadowColor = 'rgba(33,230,255,0.85)'; x.shadowBlur = 7;
+  x.strokeStyle = 'rgba(150,225,255,0.9)'; x.lineWidth = 3;
+  x.beginPath(); x.moveTo(1.5,0); x.lineTo(1.5,256); x.stroke();
+  x.beginPath(); x.moveTo(0,1.5); x.lineTo(256,1.5); x.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+const underlayMat = () => new THREE.MeshStandardMaterial({ color:0x0a0f1f, side:THREE.BackSide,
+  roughness:0.85, metalness:0.12, fog:true });
+
+// realistic brick wall (square tunnel -> underground corridor)
+function makeBrickTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#241f1b'; x.fillRect(0,0,256,256);          // mortar
+  const bw=64, bh=32, m=4;
+  for(let row=0; row*bh<256+bh; row++){
+    const off = (row%2) ? bw/2 : 0;
+    for(let col=-1; col*bw<256+bw; col++){
+      const bx = col*bw + off + m/2, by = row*bh + m/2;
+      const s = 78 + Math.floor(Math.random()*46);
+      x.fillStyle = `rgb(${s+46},${Math.floor(s*0.55)},${Math.floor(s*0.44)})`;
+      x.fillRect(bx, by, bw-m, bh-m);
+      // subtle top highlight on each brick
+      x.fillStyle = 'rgba(255,225,200,0.05)';
+      x.fillRect(bx, by, bw-m, 3);
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
+}
+// realistic ceramic tiles (round tunnel -> subway tube)
+function makeSubwayTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#0c0d0f'; x.fillRect(0,0,256,256);          // dark grout
+  const tw=64, th=42, m=5;
+  for(let row=0; row*th<256+th; row++){
+    const off = (row%2) ? tw/2 : 0;
+    for(let col=-1; col*tw<256+tw; col++){
+      const tx = col*tw + off + m/2, ty = row*th + m/2;
+      const s = 92 + Math.floor(Math.random()*34);          // grimy, dim tile
+      x.fillStyle = `rgb(${s},${s-3},${s-9})`;
+      x.fillRect(tx, ty, tw-m, th-m);
+      // occasional stain / dirt streak
+      if(Math.random()<0.18){ x.fillStyle='rgba(20,16,10,0.35)'; x.fillRect(tx, ty, tw-m, th-m); }
+      x.fillStyle = 'rgba(255,255,255,0.04)';
+      x.fillRect(tx, ty, tw-m, 3);
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
+}
+
+/* ---------- ROUND TUNNEL ---------- */
+const roundGroup = new THREE.Group(); scene.add(roundGroup);
+const tunnelTex = makeTunnelTexture();
+const tunnelMatFut = new THREE.MeshBasicMaterial({ map:tunnelTex, side:THREE.BackSide, fog:true });
+const subwayTex = makeSubwayTexture(); subwayTex.repeat.set(18, 30);
+const tunnelMatReal = new THREE.MeshStandardMaterial({ map:subwayTex, side:THREE.BackSide,
+  roughness:0.92, metalness:0.03, fog:true });
+const tunnel = new THREE.Mesh(
+  new THREE.CylinderGeometry(TUNNEL_R, TUNNEL_R, 70, 48, 1, true), tunnelMatFut);
+tunnel.rotation.x = Math.PI/2; tunnel.position.z = -16; roundGroup.add(tunnel);
+const roundWall = new THREE.Mesh(
+  new THREE.CylinderGeometry(TUNNEL_R+0.05, TUNNEL_R+0.05, 70, 48, 1, true), underlayMat());
+roundWall.rotation.x = Math.PI/2; roundWall.position.z = -16; roundGroup.add(roundWall);
+
+const RING_COUNT = 16, roundRings = [];
+const ringGeo = new THREE.TorusGeometry(TUNNEL_R-0.04, 0.05, 8, 64);
+for(let i=0;i<RING_COUNT;i++){
+  const r = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color:0x21e6ff,
+    transparent:true, opacity:0.5, blending:THREE.AdditiveBlending, fog:true }));
+  r.position.z = RING_BACK + (i/RING_COUNT)*RING_SPAN;
+  roundGroup.add(r); roundRings.push(r);
+}
+
+/* ---------- SQUARE (4-WALL) TUNNEL ---------- */
+const squareGroup = new THREE.Group(); scene.add(squareGroup);
+const H = SQUARE_H;
+// dark lit box behind the glowing grid (BackSide -> caps don't block the view)
+const sqBox = new THREE.Mesh(new THREE.BoxGeometry(2*H+0.12, 2*H+0.12, SQ_L), underlayMat());
+sqBox.position.z = SQ_CZ; squareGroup.add(sqBox);
+// glowing grid on the 4 walls (textures repeat so cells stay ~square in world space)
+const cell = 1.7;
+const gridLR = makeGridTexture(); gridLR.repeat.set(Math.round(SQ_L/cell), Math.round(2*H/cell));
+const gridTB = makeGridTexture(); gridTB.repeat.set(Math.round(2*H/cell), Math.round(SQ_L/cell));
+const wallMatOpts = m => ({ map:m, transparent:true, blending:THREE.AdditiveBlending,
+  side:THREE.DoubleSide, depthWrite:false, fog:true });
+const matLR = new THREE.MeshBasicMaterial(wallMatOpts(gridLR));
+const matTB = new THREE.MeshBasicMaterial(wallMatOpts(gridTB));
+// realistic brick equivalents (lit, opaque)
+const brickLR = makeBrickTexture(); brickLR.repeat.set(Math.round(SQ_L/2.3), Math.round(2*H/2.3));
+const brickTB = makeBrickTexture(); brickTB.repeat.set(Math.round(2*H/2.3), Math.round(SQ_L/2.3));
+const matLR_real = new THREE.MeshStandardMaterial({ map:brickLR, side:THREE.DoubleSide, roughness:0.95, metalness:0.0, fog:true });
+const matTB_real = new THREE.MeshStandardMaterial({ map:brickTB, side:THREE.DoubleSide, roughness:0.95, metalness:0.0, fog:true });
+const wR = new THREE.Mesh(new THREE.PlaneGeometry(SQ_L, 2*H), matLR); wR.rotation.y =  Math.PI/2; wR.position.set( H,0,SQ_CZ);
+const wL = new THREE.Mesh(new THREE.PlaneGeometry(SQ_L, 2*H), matLR); wL.rotation.y = -Math.PI/2; wL.position.set(-H,0,SQ_CZ);
+const wT = new THREE.Mesh(new THREE.PlaneGeometry(2*H, SQ_L), matTB); wT.rotation.x = -Math.PI/2; wT.position.set(0, H,SQ_CZ);
+const wB = new THREE.Mesh(new THREE.PlaneGeometry(2*H, SQ_L), matTB); wB.rotation.x =  Math.PI/2; wB.position.set(0,-H,SQ_CZ);
+squareGroup.add(wR, wL, wT, wB);
+// bright corner edges to drive the perspective toward the vanishing point
+const cornerMat = new THREE.LineBasicMaterial({ color:0x21e6ff, transparent:true, opacity:0.55,
+  blending:THREE.AdditiveBlending, fog:true });
+const cornerLines = [];
+[[H,H],[H,-H],[-H,H],[-H,-H]].forEach(([cx,cy])=>{
+  const g = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(cx,cy,SQ_FRONT), new THREE.Vector3(cx,cy,SQ_REAR)]);
+  const ln = new THREE.Line(g, cornerMat);
+  squareGroup.add(ln); cornerLines.push(ln);
+});
+// streaming square frames (the square-tunnel equivalent of warp rings)
+const FRAME_COUNT = 14, squareFrames = [];
+const frameGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(2*H, 2*H));
+for(let i=0;i<FRAME_COUNT;i++){
+  const f = new THREE.LineSegments(frameGeo, new THREE.LineBasicMaterial({ color:0x21e6ff,
+    transparent:true, opacity:0.5, blending:THREE.AdditiveBlending, fog:true }));
+  f.position.z = RING_BACK + (i/FRAME_COUNT)*RING_SPAN;
+  squareGroup.add(f); squareFrames.push(f);
+}
+
+/* ---------- shared drifting dust ---------- */
+const DUST = 260;
+const dustPos = new Float32Array(DUST*3);
+let dust = null;
+function setDust(shape){
+  for(let i=0;i<DUST;i++){
+    let px, py;
+    if(shape==='square'){
+      px = (Math.random()*2-1)*(SQUARE_H-0.3);
+      py = (Math.random()*2-1)*(SQUARE_H-0.3);
+    } else {
+      const a = Math.random()*Math.PI*2, rad = Math.sqrt(Math.random())*(TUNNEL_R-0.4);
+      px = Math.cos(a)*rad; py = Math.sin(a)*rad;
+    }
+    dustPos[i*3]=px; dustPos[i*3+1]=py; dustPos[i*3+2]=RING_BACK + Math.random()*RING_SPAN;
+  }
+  if(dust) dust.geometry.attributes.position.needsUpdate = true;
+}
+setDust(cfg.shape);
+const dustGeo = new THREE.BufferGeometry();
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos,3));
+dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color:0x8fb6ff, size:0.05,
+  transparent:true, opacity:0.5, blending:THREE.AdditiveBlending, depthWrite:false, fog:true }));
+scene.add(dust);
+
+/* toggle between the two tunnel looks */
+function applyShape(){
+  squareGroup.visible = (cfg.shape === 'square');
+  roundGroup.visible  = (cfg.shape !== 'square');
+  setDust(cfg.shape);
+}
+/* toggle between neon and brick/subway themes */
+function applyAppearance(){
+  const real = (cfg.appearance === 'realistic');
+  const fogCol = real ? 0x0b0a08 : 0x05060d;
+  scene.fog.color.setHex(fogCol); renderer.setClearColor(fogCol, 1);
+  amb.color.setHex(real ? 0x4b4338 : 0x2a3360); amb.intensity = real ? 0.85 : 0.6;
+  rimCyan.color.setHex(real ? 0xffd9a0 : 0x21e6ff); rimCyan.intensity = real ? 0.75 : 0.8;
+  rimMag.color.setHex(real ? 0xffce9a : 0xff2e88); rimMag.intensity = real ? 0.65 : 0.7;
+  // square walls
+  wR.material = real ? matLR_real : matLR;
+  wL.material = real ? matLR_real : matLR;
+  wT.material = real ? matTB_real : matTB;
+  wB.material = real ? matTB_real : matTB;
+  cornerLines.forEach(l => l.visible = !real);
+  // round tube
+  tunnel.material = real ? tunnelMatReal : tunnelMatFut;
+}
+applyShape();
+applyAppearance();
+
+/* ================= GLOW SPRITE TEXTURE ================= */
+function makeGlowTexture(){
+  const c = document.createElement('canvas'); c.width=c.height=128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64,64,0,64,64,64);
+  g.addColorStop(0,'rgba(255,255,255,1)');
+  g.addColorStop(.25,'rgba(255,255,255,.65)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=g; x.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+const glowTex = makeGlowTexture();
+
+/* ================= PADDLES ================= */
+function makePaddle(color){
+  const g = new THREE.Group();
+  const size = cfg.paddle;
+  // faint fill
+  const fill = new THREE.Mesh(new THREE.PlaneGeometry(1,1),
+    new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.14,
+      side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending }));
+  // bright border
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(1,1)),
+    new THREE.LineBasicMaterial({ color }));
+  // soft glow behind
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, color,
+    transparent:true, opacity:0.55, blending:THREE.AdditiveBlending, depthWrite:false }));
+  g.add(fill); g.add(edges); g.add(glow);
+  g.userData = { fill, edges, glow, hitFlash:0 };
+  applyPaddleSize(g, size);
+  return g;
+}
+function applyPaddleSize(g, size){
+  g.userData.fill.scale.set(size,size,1);
+  g.userData.edges.scale.set(size,size,1);
+  g.userData.glow.scale.set(size*1.7,size*1.7,1);
+  g.userData.size = size;
+}
+const player = makePaddle(0x21e6ff); player.position.set(0,0,PLAYER_Z); scene.add(player);
+const ai     = makePaddle(0xff2e88); ai.position.set(0,0,AI_Z);  scene.add(ai);
+const playerTarget = new THREE.Vector2(0,0);
+
+/* ================= BALL ================= */
+const ball = new THREE.Mesh(
+  new THREE.SphereGeometry(BALL_R, 24, 24),
+  new THREE.MeshBasicMaterial({ color:0xffffff, fog:false }));
+scene.add(ball);
+const ballGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, color:0xbfefff,
+  transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false }));
+ballGlow.scale.set(2.2,2.2,1); ball.add(ballGlow);
+const ballLight = new THREE.PointLight(0xbfefff, 1.5, 22); ball.add(ballLight);
+const ballVel = new THREE.Vector3();
+
+/* ball trail (pool of fading additive sprites) */
+const TRAIL_N = 18;
+const trail = [];
+for(let i=0;i<TRAIL_N;i++){
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, color:0x9fe8ff,
+    transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false, fog:false }));
+  s.scale.set(1,1,1); scene.add(s); trail.push(s);
+}
+let trailHead = 0;
+
+/* ================= INPUT ================= */
+const ray = new THREE.Raycaster();
+const planePlayer = new THREE.Plane(new THREE.Vector3(0,0,1), -PLAYER_Z);
+const ndc = new THREE.Vector2();
+const keys = {};
+
+function pointerMove(clientX, clientY){
+  if(cfg.control!=='mouse') return;
+  ndc.x = (clientX/innerWidth)*2 - 1;
+  ndc.y = -(clientY/innerHeight)*2 + 1;
+  ray.setFromCamera(ndc, camera);
+  const p = new THREE.Vector3();
+  if(ray.ray.intersectPlane(planePlayer, p)){
+    playerTarget.set(p.x, p.y);
+    clampToTunnel(playerTarget, player.userData.size);
+  }
+}
+addEventListener('mousemove', e=>pointerMove(e.clientX, e.clientY));
+addEventListener('touchmove', e=>{ if(e.touches[0]){ pointerMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); } }, {passive:false});
+addEventListener('keydown', e=>{
+  keys[e.code]=true;
+  if(e.code==='KeyP'||e.code==='Escape'){
+    if(settingsOpen()) closeSettings();
+    else if(game.running && !game.over && game.mode==='solo') openSettings('game');
+    else if(!game.running && $('startScreen').classList.contains('show')) openSettings('start');
+  }
+});
+addEventListener('keyup', e=>{ keys[e.code]=false; });
+
+function clampToTunnel(v2, size){
+  if(cfg.shape === 'square'){
+    const lim = SQUARE_H - size/2 - 0.15;
+    v2.x = Math.max(-lim, Math.min(lim, v2.x));
+    v2.y = Math.max(-lim, Math.min(lim, v2.y));
+  } else {
+    const lim = TUNNEL_R - size/2 - 0.15;
+    const r = Math.hypot(v2.x, v2.y);
+    if(r > lim){ v2.x = v2.x/r*lim; v2.y = v2.y/r*lim; }
+  }
+}
+
+/* ================= GAME FLOW ================= */
+function serve(towardPlayer){
+  ball.position.set(0,0,0);
+  const dirZ = towardPlayer ? 1 : -1;
+  const ang = (Math.random()*0.6 - 0.3);
+  const planar = 0.35 + Math.random()*0.25;
+  ballVel.set(Math.cos(ang)*planar, Math.sin(ang)*planar, dirZ).normalize().multiplyScalar(cfg.speed);
+  game.serveTimer = 0.7;
+}
+function resetMatch(){
+  game.scoreYou = 0; game.scoreCpu = 0; game.over=false;
+  updateScores(); serve(Math.random()<0.5);
+  ai.position.set(0,0,AI_Z); playerTarget.set(0,0); player.position.x=0; player.position.y=0;
+}
+function point(toPlayer){
+  if(toPlayer) game.scoreYou++; else game.scoreCpu++;
+  updateScores();
+  flashPaddle(toPlayer?player:ai);
+  if(game.scoreYou>=cfg.win || game.scoreCpu>=cfg.win){ endMatch(); return; }
+  serve(!toPlayer); // serve toward the player who was just scored on
+}
+function endMatch(){
+  const youWon = game.scoreYou >= cfg.win;
+  if(game.mode==='host'){
+    netSend({ t:'o', winner: youWon?'host':'guest', hs:game.scoreYou, gs:game.scoreCpu });
+  }
+  showOver(youWon, game.scoreYou, game.scoreCpu);
+}
+function showOver(youWon, ys, os){
+  game.over=true; game.running=false;
+  const w = document.getElementById('winnerText');
+  w.textContent = youWon ? 'You win' : (game.mode==='solo' ? 'CPU wins' : 'Opponent wins');
+  w.className = 'winner '+(youWon?'you':'cpu');
+  document.getElementById('finalScore').textContent = ys+' — '+os;
+  show('overScreen');
+}
+function flashPaddle(p){ p.userData.hitFlash = 1; }
+
+/* ================= AI ================= */
+function updateAI(dt){
+  const d = DIFF[cfg.diff];
+  // predict where the ball will cross the AI plane when it's heading there
+  let tx = ball.position.x, ty = ball.position.y;
+  if(ballVel.z < 0){
+    const lead = d.lead;
+    tx = ball.position.x + ballVel.x*lead*0.4;
+    ty = ball.position.y + ballVel.y*lead*0.4;
+  } else {
+    // ball moving away -> drift toward center, imperfectly
+    tx *= 0.4; ty *= 0.4;
+  }
+  // imperfection jitter
+  tx += Math.sin(performance.now()*0.002)*d.jitter*0.5;
+  ty += Math.cos(performance.now()*0.0017)*d.jitter*0.5;
+  const t = 1 - Math.pow(1 - d.track, dt*60);
+  ai.position.x += (tx - ai.position.x)*t;
+  ai.position.y += (ty - ai.position.y)*t;
+  const v = new THREE.Vector2(ai.position.x, ai.position.y);
+  clampToTunnel(v, ai.userData.size);
+  ai.position.x = v.x; ai.position.y = v.y;
+}
+
+/* ================= PHYSICS STEP ================= */
+function stepBall(dt){
+  if(game.serveTimer>0){ game.serveTimer -= dt; return; } // brief pause on serve
+  const prevZ = ball.position.z;
+  ball.position.addScaledVector(ballVel, dt);
+
+  // wall reflection — flat 4 walls (square) or radial (round)
+  if(cfg.shape === 'square'){
+    const lim = SQUARE_H - BALL_R;
+    if(ball.position.x >  lim){ ball.position.x =  lim; ballVel.x = -Math.abs(ballVel.x); spawnRingPulse(ball.position.z, 0x8b5cff); }
+    else if(ball.position.x < -lim){ ball.position.x = -lim; ballVel.x =  Math.abs(ballVel.x); spawnRingPulse(ball.position.z, 0x8b5cff); }
+    if(ball.position.y >  lim){ ball.position.y =  lim; ballVel.y = -Math.abs(ballVel.y); spawnRingPulse(ball.position.z, 0x8b5cff); }
+    else if(ball.position.y < -lim){ ball.position.y = -lim; ballVel.y =  Math.abs(ballVel.y); spawnRingPulse(ball.position.z, 0x8b5cff); }
+  } else {
+    const r = Math.hypot(ball.position.x, ball.position.y);
+    const lim = TUNNEL_R - BALL_R;
+    if(r > lim){
+      const nx = ball.position.x/r, ny = ball.position.y/r;
+      const dot = ballVel.x*nx + ballVel.y*ny;
+      ballVel.x -= 2*dot*nx; ballVel.y -= 2*dot*ny;
+      ball.position.x = nx*lim; ball.position.y = ny*lim;
+      spawnRingPulse(ball.position.z, 0x8b5cff);
+    }
+  }
+
+  // paddle collisions: detect the frame the ball CROSSES a paddle plane
+  // (robust even at high speed, where it could otherwise skip past in one step)
+  if(ballVel.z>0 && prevZ < PLAYER_Z && ball.position.z >= PLAYER_Z){
+    const t  = (PLAYER_Z - prevZ) / (ball.position.z - prevZ);
+    const cx = ball.position.x - ballVel.x*dt*(1-t);
+    const cy = ball.position.y - ballVel.y*dt*(1-t);
+    if(paddleHit(player, cx, cy)){ ball.position.set(cx, cy, PLAYER_Z); bounceOff(player, +1); }
+  }
+  if(ballVel.z<0 && prevZ > AI_Z && ball.position.z <= AI_Z){
+    const t  = (prevZ - AI_Z) / (prevZ - ball.position.z);
+    const cx = ball.position.x - ballVel.x*dt*(1-t);
+    const cy = ball.position.y - ballVel.y*dt*(1-t);
+    if(paddleHit(ai, cx, cy)){ ball.position.set(cx, cy, AI_Z); bounceOff(ai, -1); }
+  }
+
+  // scoring
+  if(ball.position.z > PLAYER_Z + MISS_Z){ point(false); }     // got past player -> CPU scores
+  else if(ball.position.z < AI_Z - MISS_Z){ point(true); }     // got past CPU -> you score
+}
+function paddleHit(p, x, y){
+  const h = p.userData.size/2 + BALL_R;
+  return Math.abs(x - p.position.x) < h && Math.abs(y - p.position.y) < h;
+}
+function bounceOff(p, sign){
+  const speed = cfg.speed;
+  const ox = ball.position.x - p.position.x;   // english from where it struck the paddle
+  const oy = ball.position.y - p.position.y;
+  ballVel.z = sign>0 ? -speed : speed;         // send it back down the tunnel
+  ballVel.x += ox*0.9; ballVel.y += oy*0.9;
+  ballVel.normalize().multiplyScalar(speed);   // keep speed constant
+  // guarantee a healthy z-component so rallies always progress
+  if(Math.abs(ballVel.z) < speed*0.45){
+    ballVel.z = (sign>0?-1:1)*speed*0.45;
+    ballVel.normalize().multiplyScalar(speed);
+  }
+  ball.position.z = p.position.z + (sign>0? -BALL_R*2 : BALL_R*2);
+  flashPaddle(p);
+  spawnRingPulse(p.position.z, sign>0?0x21e6ff:0xff2e88);
+}
+
+/* a quick expanding flash at z — square frame or ring, matching the tunnel */
+const pulses=[];
+const pulseRingGeo = new THREE.TorusGeometry(0.4,0.05,6,40);
+const pulseFrameGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(0.8,0.8));
+function spawnRingPulse(z, color){
+  const mat = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.9,
+    blending:THREE.AdditiveBlending, fog:true });
+  let m;
+  if(cfg.shape === 'square'){
+    m = new THREE.LineSegments(pulseFrameGeo, mat);
+  } else {
+    m = new THREE.Mesh(pulseRingGeo, new THREE.MeshBasicMaterial({ color, transparent:true,
+      opacity:0.9, blending:THREE.AdditiveBlending, fog:true }));
+  }
+  m.position.z = z; scene.add(m);
+  pulses.push({m, life:0});
+}
+function updatePulses(dt){
+  for(let i=pulses.length-1;i>=0;i--){
+    const p=pulses[i]; p.life+=dt;
+    const k=p.life/0.45;
+    p.m.scale.setScalar(1 + k*15);
+    p.m.material.opacity = Math.max(0, 0.9*(1-k));
+    if(k>=1){ scene.remove(p.m); p.m.material.dispose(); pulses.splice(i,1); }
+  }
+}
+
+/* ================= VISUAL UPDATE ================= */
+function updatePaddleVisual(p, dt){
+  if(p.userData.hitFlash>0){
+    p.userData.hitFlash = Math.max(0, p.userData.hitFlash - dt*3);
+    const f = p.userData.hitFlash;
+    p.userData.glow.material.opacity = 0.55 + f*0.8;
+    p.userData.fill.material.opacity = 0.14 + f*0.4;
+    p.scale.setScalar(1 + f*0.12);
+  } else {
+    p.scale.setScalar(1);
+    p.userData.glow.material.opacity = 0.55;
+    p.userData.fill.material.opacity = 0.14;
+  }
+}
+function updateTrail(){
+  for(let i=0;i<TRAIL_N;i++){
+    const s = trail[i];
+    s.material.opacity = Math.max(0, s.material.opacity - 0.05);
+    s.scale.multiplyScalar(0.985);
+  }
+  if(cfg.trail && game.running && !game.paused && game.serveTimer<=0){
+    const s = trail[trailHead];
+    s.position.copy(ball.position);
+    s.material.opacity = 0.6; s.scale.set(1.1,1.1,1);
+    trailHead = (trailHead+1)%TRAIL_N;
+  }
+}
+
+/* ================= LOOP ================= */
+function animateStreamers(arr, dz){
+  const real = (cfg.appearance === 'realistic');
+  for(const r of arr){
+    r.position.z += dz;
+    if(r.position.z > RING_FRONT) r.position.z -= RING_SPAN;
+    const f = (r.position.z - RING_BACK)/RING_SPAN;       // 0 far -> 1 near
+    if(real){
+      r.material.opacity = 0.05 + f*0.26;                 // dim passing light fixtures
+      r.material.color.setHSL(0.09, 0.45, 0.66);          // warm white
+    } else {
+      r.material.opacity = 0.12 + f*0.5;
+      r.material.color.setHSL(0.5 + (1-f)*0.18, 1, 0.6);  // cyan near -> violet far
+    }
+  }
+}
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  let dt = Math.min(clock.getDelta(), 0.033);
+
+  // ambient motion (always on, even on menus)
+  const warp = 6 + (cfg.speed-14)*0.25;
+  animateStreamers(roundRings, warp*dt);
+  animateStreamers(squareFrames, warp*dt);
+  tunnelTex.offset.y -= warp*dt*0.03;
+  subwayTex.offset.y -= warp*dt*0.03;
+  const dp = dust.geometry.attributes.position.array;
+  for(let i=0;i<DUST;i++){
+    dp[i*3+2] += warp*dt*1.3;
+    if(dp[i*3+2] > RING_FRONT) dp[i*3+2] -= RING_SPAN;
+  }
+  dust.geometry.attributes.position.needsUpdate = true;
+
+  if(game.running && !game.paused){
+    // local player steering
+    if(cfg.control==='keys'){
+      const sp = 9*dt;
+      if(keys['ArrowLeft']||keys['KeyA']) playerTarget.x -= sp;
+      if(keys['ArrowRight']||keys['KeyD']) playerTarget.x += sp;
+      if(keys['ArrowUp']||keys['KeyW']) playerTarget.y += sp;
+      if(keys['ArrowDown']||keys['KeyS']) playerTarget.y -= sp;
+      clampToTunnel(playerTarget, player.userData.size);
+    }
+    const lerp = 1 - Math.pow(0.001, dt);
+    player.position.x += (playerTarget.x - player.position.x)*lerp;
+    player.position.y += (playerTarget.y - player.position.y)*lerp;
+
+    if(game.mode==='solo'){ updateAI(dt); stepBall(dt); }
+    else if(game.mode==='host'){ stepBall(dt); }   // authoritative; opponent paddle set from net
+    else if(game.mode==='guest'){ guestBallUpdate(dt); }  // dead-reckoned from host
+
+    // send our state ~30 Hz
+    if(net.connected){
+      const nowMs = performance.now();
+      if(nowMs - net.lastSend > 33){
+        net.lastSend = nowMs;
+        netSend({ t:'p', x:player.position.x, y:player.position.y });
+        if(game.mode==='host'){
+          const moving = game.serveTimer<=0;
+          netSend({ t:'b',
+            x:ball.position.x, y:ball.position.y, z:ball.position.z,
+            vx: moving?ballVel.x:0, vy: moving?ballVel.y:0, vz: moving?ballVel.z:0,
+            hs:game.scoreYou, gs:game.scoreCpu });
+        }
+      }
+    }
+  }
+
+  updatePaddleVisual(player, dt);
+  updatePaddleVisual(ai, dt);
+  updatePulses(dt);
+  updateTrail();
+
+  // ball glow flicker
+  ballGlow.material.opacity = 0.85 + Math.sin(performance.now()*0.01)*0.08;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+/* ================= UI WIRING ================= */
+function $(id){ return document.getElementById(id); }
+function show(id){ document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('show')); if(id) $(id).classList.add('show'); }
+function hideAll(){ show(null); }
+
+function updateScores(){
+  $('scoreYou').textContent = game.scoreYou;
+  $('scoreCpu').textContent = game.scoreCpu;
+}
+function startGame(){
+  game.mode='solo';
+  document.querySelector('.score.cpu .label').textContent='CPU';
+  hideAll(); resetMatch(); game.running=true; game.paused=false; game.over=false;
+}
+let settingsReturn = 'start';   // where to go when settings close
+function openSettings(from){
+  if(from==='game' && game.mode!=='solo') return;   // no pausing a live netplay match
+  settingsReturn = from;
+  game.paused = (from === 'game');
+  document.querySelector('#settingsScreen .eyebrow').textContent = (from==='game') ? 'paused' : 'setup';
+  $('restartBtn').style.display = (from==='game') ? '' : 'none';
+  $('resumeBtn').textContent = (from==='game') ? 'Resume' : 'Done';
+  show('settingsScreen');
+}
+function closeSettings(){
+  if(settingsReturn === 'game' && game.running && !game.over){ game.paused=false; hideAll(); }
+  else { show('startScreen'); }
+}
+function settingsOpen(){ return $('settingsScreen').classList.contains('show'); }
+
+$('startBtn').onclick = startGame;
+$('startSettingsBtn').onclick = ()=> openSettings('start');
+$('playAgainBtn').onclick = ()=>{ if(game.mode==='solo') startGame(); else { cleanupNet(); show('startScreen'); } };
+$('gearBtn').onclick = ()=>{
+  if(game.over) return;
+  if(game.running && game.mode!=='solo') return;     // can't open settings mid-netplay
+  openSettings(game.running ? 'game' : 'start');
+};
+$('resumeBtn').onclick = closeSettings;
+$('restartBtn').onclick = startGame;
+
+/* settings: sliders */
+const speedLabels=[[18,'Slow'],[26,'Normal'],[33,'Fast'],[99,'Blistering']];
+function speedName(v){ for(const [t,n] of speedLabels) if(v<=t) return n; return 'Fast'; }
+$('speed').oninput = e=>{ cfg.speed=+e.target.value; $('speedVal').textContent=speedName(cfg.speed);
+  if(game.running){ const s=ballVel.length()||1; ballVel.multiplyScalar(cfg.speed/s); } };
+const paddleLabels=[[2.1,'Small'],[3,'Medium'],[3.5,'Large'],[9,'Huge']];
+function paddleName(v){ for(const [t,n] of paddleLabels) if(v<=t) return n; return 'Large'; }
+$('paddle').oninput = e=>{ cfg.paddle=+e.target.value; $('paddleVal').textContent=paddleName(cfg.paddle);
+  applyPaddleSize(player,cfg.paddle); applyPaddleSize(ai,cfg.paddle); };
+
+/* settings: segmented controls */
+function seg(id, key, after){
+  const wrap=$(id);
+  wrap.querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      wrap.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      cfg[key]=b.dataset.v;
+      if(after) after(b.dataset.v);
+    };
+  });
+}
+seg('diffSeg','diff', v=>$('diffVal').textContent=v[0].toUpperCase()+v.slice(1));
+seg('winSeg','win',  v=>{ cfg.win=+v; $('winVal').textContent=v; $('targetVal').textContent=v; });
+seg('ctrlSeg','control', v=>{ $('ctrlVal').textContent=(v==='mouse'?'Mouse':'Keyboard');
+  $('hint').textContent = v==='mouse' ? 'move mouse to steer · P to pause' : 'WASD / arrows to steer · P to pause'; });
+seg('shapeSeg','shape', v=>{ $('shapeVal').textContent=(v==='square'?'Square':'Round'); applyShape(); });
+seg('appearSeg','appearance', v=>{ $('appearVal').textContent=(v==='futuristic'?'Futuristic':'Realistic'); applyAppearance(); });
+seg('trailSeg','trail', v=>{ cfg.trail=(v==='on'); $('trailVal').textContent=(v==='on'?'On':'Off');
+  if(!cfg.trail) trail.forEach(s=>s.material.opacity=0); });
+// win is stored as string by generic seg(); coerce on use already handled above
+
+/* ================= MULTIPLAYER (WebRTC DataChannel) ================= */
+/*
+   Roles: 'host' is authoritative for the ball; 'guest' renders what the host
+   sends. Both stream their own paddle. Each player sees themselves at the near
+   end, so anything crossing the wire is rotated 180° about the Y axis
+   (x -> -x, z -> -z) to convert between the two viewpoints.
+*/
+
+// --- signaling over PHP/MySQL ---
+async function api(action, params={}, body=null){
+  const qs = new URLSearchParams(Object.assign({action}, params)).toString();
+  const opt = body ? { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) } : {};
+  const res = await fetch(SIGNAL_URL + '?' + qs, opt);
+  if(!res.ok) throw new Error('http '+res.status);
+  return res.json();
+}
+function postSignal(type, payload){
+  return api('signal', { code:net.code }, { sender:net.role, type, payload });
+}
+function startPolling(){
+  stopPolling();
+  net.poll = setInterval(async ()=>{
+    try{
+      const r = await api('poll', { code:net.code, me:net.role, since:net.since });
+      if(!r.ok) return;
+      for(const m of r.messages){
+        net.since = Math.max(net.since, m.id);
+        await handleSignal(m.type, m.payload);
+      }
+    }catch(e){ /* transient network error, keep polling */ }
+  }, 700);
+}
+function stopPolling(){ if(net.poll){ clearInterval(net.poll); net.poll=null; } }
+
+async function handleSignal(type, payload){
+  const pc = net.pc; if(!pc) return;
+  try{
+    if(type==='offer'){
+      await pc.setRemoteDescription(new RTCSessionDescription(payload));
+      net.remoteSet = true; await flushIce();
+      const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+      postSignal('answer', pc.localDescription);
+    } else if(type==='answer'){
+      await pc.setRemoteDescription(new RTCSessionDescription(payload));
+      net.remoteSet = true; await flushIce();
+    } else if(type==='ice'){
+      if(net.remoteSet){ try{ await pc.addIceCandidate(payload); }catch(e){} }
+      else net.pendingIce.push(payload);
+    }
+  }catch(e){ /* ignore malformed/duplicate signals */ }
+}
+async function flushIce(){
+  for(const c of net.pendingIce){ try{ await net.pc.addIceCandidate(c); }catch(e){} }
+  net.pendingIce = [];
+}
+
+// --- peer setup ---
+function setupPeer(isOfferer){
+  net.pc = new RTCPeerConnection(RTC_CONFIG);
+  net.pc.onicecandidate = e=>{ if(net.pc && e.candidate) postSignal('ice', e.candidate.toJSON()); };
+  net.pc.onconnectionstatechange = ()=>{
+    const st = net.pc && net.pc.connectionState;
+    // only treat state changes as a drop AFTER we've actually connected;
+    // during signaling, transient 'disconnected'/'failed' must not tear down setup
+    if(net.connected && (st==='failed' || st==='disconnected' || st==='closed')) onNetDrop();
+  };
+  if(isOfferer){
+    net.ch = net.pc.createDataChannel('game', { ordered:false, maxRetransmits:0 });
+    wireChannel(net.ch);
+    net.pc.createOffer()
+      .then(o => net.pc.setLocalDescription(o))
+      .then(()=>{ if(net.pc && net.pc.localDescription) return postSignal('offer', net.pc.localDescription); })
+      .catch(err => {
+        console.error('[ZBounce] offer setup failed:', err);
+        netInfo('Setup failed', String((err && (err.message || err.name)) || err));
+      });
+  } else {
+    net.pc.ondatachannel = e=>{ net.ch = e.channel; wireChannel(net.ch); };
+  }
+}
+function wireChannel(ch){
+  ch.onopen = onChannelOpen;
+  ch.onclose = onNetDrop;
+  ch.onmessage = e=> onNetMessage(e.data);
+}
+
+async function hostStart(){
+  net.role='host'; net.since=0; net.remoteSet=false; net.pendingIce=[];
+  try{
+    const r = await api('create');
+    if(!r.ok){ netInfo('Server error','Could not create a room. Check the PHP / MySQL setup.'); return; }
+    net.code = r.code;
+    $('hostCode').textContent = net.code;
+    $('hostStatus').textContent = 'Share this code. Waiting for your opponent to join…';
+    show('hostScreen');
+    try { setupPeer(true); }
+    catch(err){ console.error('[ZBounce] setupPeer threw:', err); netInfo('Setup failed', String((err && (err.message||err.name)) || err)); return; }
+    startPolling();
+  }catch(e){ console.error('[ZBounce] hostStart:', e); netInfo('Server unreachable', String((e && e.message) || e)); }
+}
+async function guestStart(code){
+  net.role='guest'; net.code=code; net.since=0; net.remoteSet=false; net.pendingIce=[];
+  try{
+    const r = await api('join', { code });
+    if(!r.ok){
+      const msg = r.error==='no_room' ? 'No game found with that code.'
+                : r.error==='room_full' ? 'That game is already full.'
+                : 'Could not join that game.';
+      $('joinError').textContent = msg; return;
+    }
+    netInfo('Connecting…','Linking up with the host.', false);
+    setupPeer(false);
+    startPolling();
+  }catch(e){ $('joinError').textContent = 'Could not reach signal.php.'; }
+}
+
+function onChannelOpen(){
+  net.connected = true;
+  stopPolling();
+  game.mode = net.role;
+  document.querySelector('.score.cpu .label').textContent = 'Opponent';
+  hideAll();
+  startNetMatch();
+}
+function startNetMatch(){
+  game.scoreYou=0; game.scoreCpu=0; game.over=false;
+  updateScores();
+  player.position.set(0,0,PLAYER_Z); playerTarget.set(0,0);
+  ai.position.set(0,0,AI_Z);
+  net.ball.have = false;
+  if(game.mode==='host'){
+    // host owns the rules — push them to the guest so both match
+    netSend({ t:'cfg', paddle:cfg.paddle, win:cfg.win });
+    serve(Math.random()<0.5);
+  }
+  $('hint').textContent = (cfg.control==='mouse' ? 'move mouse to steer' : 'WASD / arrows to steer') + ' · head-to-head';
+  game.running=true; game.paused=false;
+}
+
+function onNetDrop(){
+  if(!net.connected && !net.pc) return;
+  const wasConnected = net.connected;
+  cleanupNet();
+  if(wasConnected && !game.over){
+    game.running=false;
+    netInfo('Opponent left','The connection dropped. They may have closed the game.');
+  }
+}
+function cleanupNet(){
+  stopPolling();
+  net.connected=false;
+  try{ if(net.ch) net.ch.close(); }catch(e){}
+  try{ if(net.pc) net.pc.close(); }catch(e){}
+  net.ch=null; net.pc=null; net.role=null; net.code=null;
+  net.since=0; net.remoteSet=false; net.pendingIce=[]; net.ball.have=false;
+}
+
+// --- per-frame + messaging ---
+function netSend(obj){
+  if(net.ch && net.ch.readyState==='open'){
+    try{ net.ch.send(JSON.stringify(obj)); }catch(e){}
+  }
+}
+function onNetMessage(data){
+  let m; try{ m = JSON.parse(data); }catch(e){ return; }
+  if(m.t==='p'){
+    // opponent paddle -> our 'ai' mesh, rotated 180° about Y into our frame
+    ai.position.x = -m.x;
+    ai.position.y =  m.y;
+  } else if(m.t==='b'){            // guest only: authoritative ball from host
+    net.ball.have = true;
+    net.ball.x = -m.x; net.ball.y =  m.y; net.ball.z = -m.z;
+    net.ball.vx = -m.vx; net.ball.vy = m.vy; net.ball.vz = -m.vz;
+    game.scoreYou = m.gs; game.scoreCpu = m.hs;   // guest: "you" = guest score
+    updateScores();
+  } else if(m.t==='cfg'){          // guest adopts host's rules
+    cfg.paddle = m.paddle; cfg.win = m.win;
+    applyPaddleSize(player, cfg.paddle); applyPaddleSize(ai, cfg.paddle);
+    $('targetVal').textContent = cfg.win;
+  } else if(m.t==='o'){            // guest: match over
+    const youWon = (m.winner==='guest');
+    game.mode='guest';
+    showOver(youWon, m.gs, m.hs);
+  }
+}
+function guestBallUpdate(dt){
+  if(!net.ball.have) return;
+  // dead-reckon between host updates, soft-correct toward the authoritative state
+  net.ball.x += net.ball.vx*dt; net.ball.y += net.ball.vy*dt; net.ball.z += net.ball.vz*dt;
+  ball.position.x += (net.ball.x - ball.position.x)*0.5;
+  ball.position.y += (net.ball.y - ball.position.y)*0.5;
+  ball.position.z += (net.ball.z - ball.position.z)*0.5;
+}
+
+// --- multiplayer menu wiring ---
+$('mpBtn').onclick = ()=> show('mpScreen');
+$('mpBackBtn').onclick = ()=> show('startScreen');
+$('hostBtn').onclick = hostStart;
+$('joinShowBtn').onclick = ()=>{ $('joinError').textContent=''; $('joinInput').value=''; show('joinScreen'); setTimeout(()=>$('joinInput').focus(),50); };
+$('joinBackBtn').onclick = ()=>{ cleanupNet(); show('mpScreen'); };
+$('joinGoBtn').onclick = ()=>{
+  const code = $('joinInput').value.trim().toUpperCase();
+  if(code.length<4){ $('joinError').textContent='Enter the full code.'; return; }
+  guestStart(code);
+};
+$('joinInput').addEventListener('keydown', e=>{ if(e.code==='Enter') $('joinGoBtn').click(); });
+$('hostCancelBtn').onclick = ()=>{ cleanupNet(); show('mpScreen'); };
+$('netInfoBtn').onclick = ()=>{ cleanupNet(); show('startScreen'); };
+
+function netInfo(title, msg, showBtn=true){
+  $('netInfoTitle').textContent = title;
+  $('netInfoMsg').textContent = msg;
+  $('netInfoBtn').style.display = showBtn ? '' : 'none';
+  show('netInfoScreen');
+}
+
+/* ================= RESIZE ================= */
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+})();
+</script>
+</body>
+</html>
